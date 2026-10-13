@@ -1,0 +1,106 @@
+Metadata-Version: 2.4
+Name: felixgx
+Version: 0.1.0
+Summary: Reader for Felix GX (.gxz) fluorescence spectrometer files
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+
+# felixgx
+
+Reader for Felix GX (`.gxz`) fluorescence-spectrometer session files
+(gzipped XML). Only dependency: NumPy. Python ≥ 3.9.
+
+```
+pip install -e .          # from this directory
+pytest                    # optional; real-file tests run if pomiary*.gxz are found
+```
+
+## Quick start
+
+```python
+import felixgx
+
+f = felixgx.load("pomiary.gxz")
+print(f.summary())
+
+f.decays          # list[DecayMeasurement]       (TCSPC histograms)
+f.emissions       # list[EmissionMeasurement]    (fixed excitation, scan emission)
+f.excitations     # list[ExcitationMeasurement]  (fixed emission, scan excitation)
+f.other           # measurements of a type the library doesn't know (never dropped)
+
+m = f.emissions[0]
+m.raw             # Trace | None   - not corrected
+m.corrected       # Trace | None   - real-time corrected ("... COR")
+m.roc             # Trace | None   - reference (RCQCSignal) signal
+m.best            # corrected if present, else raw
+
+m.corrected.x, m.corrected.y          # numpy arrays
+m.corrected.x_unit, m.corrected.y_unit
+m.name, m.executed, m.excitation_wavelength, m.emission_range, m.step
+```
+
+`raw`, `corrected` and `roc` are each `None` when that curve is not in the file
+(correction disabled, reference not saved, curve deleted, ...). Nothing else
+changes in that case.
+
+## Metadata
+
+| where | what |
+|---|---|
+| `f.metadata` | file level: `format_version`, `program_version`, `converter_version`, `original_filename`, `sessions` |
+| `f.common_metadata` | settings with the *same value in every measurement* (dotted keys) |
+| `m.metadata` | everything about one measurement: slits, integration, correction settings, trace manifest, comments, … plus `properties` (typed `acq.*` values), `executed`, `session`, `detector` |
+| `Trace.properties`, `Trace.extra` | per-curve XML properties / any other tags |
+
+Values are typed where possible: `bool`, `int`, `float`,
+`Quantity(value, unit)` (e.g. `Quantity(5.0, 'nm')`), ranges as a pair of
+`Quantity`, otherwise `str`. Example:
+
+```python
+m.metadata["slit_settings"]["emission"]["exit"]   # Quantity(1.0, 'nm')
+m.metadata["integration"]                          # Quantity(1.0, 'sec')
+m.metadata["real_time_correction_settings"]        # {'excitation_correction': 'Disabled', ...}
+```
+
+`created` is kept as the text Felix wrote (its format depends on the PC's
+locale); use `executed` (ISO timestamp) for dates.
+
+## How curves are matched (and why not by name)
+
+Trace names are user-editable, so they are only a weak hint.
+
+* **Grouping**: raw + corrected curves of one acquisition share session,
+  detector, type and `TimeExecuted` (100 ns resolution). The ROC signal lives
+  in the separate `RCQCSignal` group and is matched on the same timestamp.
+* **Raw vs corrected**: the raw curve carries the instrument `acq.*`
+  properties (wavelengths, step, …); a derived curve only has `acq.DateTime`.
+  A `COR` marker in the name and the file order are tie-breakers. If the
+  acquisition's trace manifest lists no derived curve, nothing is treated as
+  corrected.
+* **Type** comes from the `Type:` line of the acquisition description
+  (`EmissionScan`, `ExcitationScan`, `TM_ibhTCSPC_Decay`); without a
+  description it is inferred from the axes/properties.
+* ROC traces matching no measurement (e.g. aborted scans) are kept in
+  `f.unassigned_traces`. Duplicates that cannot be placed go to
+  `Measurement.extra_traces`.
+
+## Robustness
+
+* Unknown/changed content never aborts loading: problems are logged
+  (`logging.getLogger("felixgx")`) and collected in `f.warnings`.
+  `felixgx.load(path, strict=True)` raises instead.
+* Corrupt gzip / invalid XML / not a Felix file → `felixgx.FelixParseError`.
+* Missing or non-numeric `Y` values become `NaN`; points without `X` are dropped
+  (with a warning).
+* Plain (un-gzipped) XML is accepted too; `felixgx.loads(bytes)` parses in-memory data.
+
+## Caveat
+
+Developed against format `3.5.1.0` / Felix GX `4.9.0.10321` (emission scans and
+decays). Excitation scans use the mirrored property names
+(`acq.ExcStartWave`, `acq.ExcEndWave`, `acq.EmiWave`) and fall back to the data
+range when those are absent; this path has been tested only with synthetic files.

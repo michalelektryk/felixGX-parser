@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "felixgx"
+version = "0.2.0"
+description = "Reader for Felix GX (.gxz) fluorescence spectrometer files"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "matplotlib"]
+
+[tool.setuptools]
+packages = ["felixgx"]
+
+[tool.setuptools.package-data]
+felixgx = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

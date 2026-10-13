@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+felixgx/__init__.py
+felixgx/_description.py
+felixgx/models.py
+felixgx/parser.py
+felixgx/py.typed
+felixgx.egg-info/PKG-INFO
+felixgx.egg-info/SOURCES.txt
+felixgx.egg-info/dependency_links.txt
+felixgx.egg-info/requires.txt
+felixgx.egg-info/top_level.txt
+tests/test_felixgx.py
